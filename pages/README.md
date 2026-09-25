@@ -3,10 +3,11 @@
 
 | Simulation        |  Description                         |
 |-------------------|--------------------------------------|
-| [3D MOT](https://teamatomecs.github.io/AtomECSDemos/3d_mot.html) | A 3D magneto-optical trap. |
-| [2D MOT](https://teamatomecs.github.io/AtomECSDemos/2d_mot.html) | A 2D+ magneto-optical source, with two slowing beams and a push beam. |
-| [AION Source](https://teamatomecs.github.io/AtomECSDemos/aion_source.html) | The 2D+ MOT source used on the AION apparatus, plus CAD of chamber. |
-| [TOP trap](https://teamatomecs.github.io/AtomECSDemos/top_trap.html) | Time-orbiting potential (atom collisions disabled). |
+| [3D MOT](https://eric-vidal-hub.github.io/AtomECSDemos/3d_mot.html) | A 3D magneto-optical trap. |
+| [2D MOT](https://eric-vidal-hub.github.io/AtomECSDemos/2d_mot.html) | A 2D+ magneto-optical source... |
+| [AION Source](https://eric-vidal-hub.github.io/AtomECSDemos/aion_source.html) | ... |
+| [TOP trap](https://eric-vidal-hub.github.io/AtomECSDemos/top_trap.html) | ... |
+| [Schreck PAL](https://eric-vidal-hub.github.io/AtomECSDemos/schreck.html) | ... |
 
 
 ## Technical details
