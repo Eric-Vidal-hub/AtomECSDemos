@@ -1,2 +1,7 @@
+# Local wasm runs are served in the browser via wasm-server-runner:
+#   cargo run --target wasm32-unknown-unknown --release --example 3d_mot
+# The rustflags line is required for wasm builds with getrandom 0.3 (used by rand 0.9):
+# getrandom 0.3 needs BOTH the `wasm_js` feature (see Cargo.toml) and this cfg flag.
 [target.wasm32-unknown-unknown]
 runner = "wasm-server-runner"
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']

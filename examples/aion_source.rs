@@ -15,13 +15,13 @@ use atomecs::shapes::Cuboid;
 use atomecs::sim_region::{SimulationRegionPlugin, SimulationVolume, VolumeType};
 use atomecs::species::Strontium88_461;
 use atomecs_demos::atoms::{add_meshes_to_atoms, EmissiveColorConfig, MaterialColorConfig};
-use atomecs_demos::camera::{control_camera, DemoCamera};
+use atomecs_demos::camera::{control_camera, DemoCamera, ortho_camera_near};
 use atomecs_demos::lasers::add_meshes_to_lasers;
 use atomecs_demos::BevyAtomECSPlugin;
 use bevy::prelude::*;
 use bevy::render::camera::{CameraProjection, Projection, Viewport};
-use bevy::window::WindowMode;
-use bevy_egui::{egui, EguiContext, EguiPlugin};
+use bevy::window::{MonitorSelection, WindowMode};
+use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use nalgebra::{Unit, Vector3};
 use rand_distr::{Distribution, Normal};
 
@@ -30,31 +30,31 @@ const BEAM_NUMBER: usize = 6;
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
-        window: WindowDescriptor {
+        primary_window: Some(Window {
             fit_canvas_to_parent: true,
             ..default()
-        },
+        }),
         ..default()
     }));
-    app.add_plugin(EguiPlugin);
-    app.add_plugin(atomecs::integrator::IntegrationPlugin);
-    app.add_plugin(atomecs::initiate::InitiatePlugin);
-    app.add_plugin(atomecs::magnetic::MagneticsPlugin);
-    app.add_plugin(LaserPlugin::<{ BEAM_NUMBER }>);
-    app.add_plugin(LaserCoolingPlugin::<Strontium88_461, { BEAM_NUMBER }>::default());
-    app.add_plugin(SimulationRegionPlugin);
-    app.add_plugin(BevyAtomECSPlugin);
-    app.add_system(atomecs::output::console_output::console_output);
-    app.add_system(atomecs::bevy_bridge::copy_positions);
-    app.add_startup_system(setup_world);
-    app.add_system(add_meshes_to_atoms::<Strontium88_461>);
-    // app.add_system(atomecs_demos::atoms::update_emissive_color::<Strontium88_461>);
-    app.add_system(add_meshes_to_lasers::<Strontium88_461>);
-    app.add_system(create_atoms);
-    app.add_system(control_camera);
-    app.add_startup_system(setup_camera);
-    // app.add_startup_system(atomecs_demos::add_atomecs_watermark);
-    app.add_startup_system(spawn_cad);
+    app.add_plugins(EguiPlugin { enable_multipass_for_primary_context: false });
+    app.add_plugins(atomecs::integrator::IntegrationPlugin);
+    app.add_plugins(atomecs::initiate::InitiatePlugin);
+    app.add_plugins(atomecs::magnetic::MagneticsPlugin);
+    app.add_plugins(LaserPlugin::<{ BEAM_NUMBER }>);
+    app.add_plugins(LaserCoolingPlugin::<Strontium88_461, { BEAM_NUMBER }>::default());
+    app.add_plugins(SimulationRegionPlugin);
+    app.add_plugins(BevyAtomECSPlugin);
+    app.add_systems(Update, atomecs::output::console_output::console_output);
+    app.add_systems(Update, atomecs::bevy_bridge::copy_positions);
+    app.add_systems(Startup, setup_world);
+    app.add_systems(Update, add_meshes_to_atoms::<Strontium88_461>);
+    // app.add_systems(Update, atomecs_demos::atoms::update_emissive_color::<Strontium88_461>);
+    app.add_systems(Update, add_meshes_to_lasers::<Strontium88_461>);
+    app.add_systems(Update, create_atoms);
+    app.add_systems(Update, control_camera);
+    app.add_systems(Startup, setup_camera);
+    // app.add_systems(Startup, atomecs_demos::add_atomecs_watermark);
+    app.add_systems(Startup, spawn_cad);
     app.insert_resource(atomecs::bevy_bridge::Scale { 0: 7e1 });
     app.insert_resource(Timestep { delta: 2.0e-5 });
     app.insert_resource(EmissionForceOption::On(EmissionForceConfiguration {
@@ -64,11 +64,11 @@ fn main() {
     app.insert_resource(MaterialColorConfig { factor: 1.0 });
     app.insert_resource(ScatteringFluctuationsOption::On);
     app.init_resource::<ExperimentConfiguration>();
-    app.add_system(experiment_controls);
-    app.add_system(update_cooling_beams);
-    app.add_system(update_push_beam);
-    app.add_system(update_magnetic_fields);
-    app.add_system(update_cad);
+    app.add_systems(Update, experiment_controls);
+    app.add_systems(Update, update_cooling_beams);
+    app.add_systems(Update, update_push_beam);
+    app.add_systems(Update, update_magnetic_fields);
+    app.add_systems(Update, update_cad);
     app.run();
 }
 
@@ -182,7 +182,7 @@ pub fn setup_world(mut commands: Commands) {
 
 fn create_atoms(mut commands: Commands) {
     let dist = Normal::new(0.0, 1.0).unwrap();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // Add atoms
     for _ in 0..3 {
@@ -211,44 +211,25 @@ fn create_atoms(mut commands: Commands) {
 
 fn setup_camera(mut commands: Commands) {
     // set up the camera
-    let camera = Camera3dBundle {
-        projection: OrthographicProjection {
-            scale: 0.03,
-            near: -10.0,
-            ..default()
-        }
-        .into(),
-        transform: Transform::from_xyz(4.0, 4.0, 3.5).looking_at(Vec3::ZERO, Vec3::Y),
-        ..default()
-    };
+    commands
+        .spawn((
+            Camera3d::default(),
+            Projection::Orthographic(ortho_camera_near(0.03, -10.0)),
+            Transform::from_xyz(4.0, 4.0, 3.5).looking_at(Vec3::ZERO, Vec3::Y),
+        ))
+        .insert(DemoCamera::default());
 
-    // camera
-    commands.spawn(camera).insert(DemoCamera::default());
-
-    const HALF_SIZE: f32 = 10.0;
-    commands.spawn(DirectionalLightBundle {
-        directional_light: DirectionalLight {
+    commands.spawn((
+        DirectionalLight {
             illuminance: 30000.0,
-            // Configure the projection to better fit the scene
-            shadow_projection: OrthographicProjection {
-                left: -HALF_SIZE,
-                right: HALF_SIZE,
-                bottom: -HALF_SIZE,
-                top: HALF_SIZE,
-                near: -20.0 * HALF_SIZE,
-                far: 20.0 * HALF_SIZE,
-                ..default()
-            },
-            shadows_enabled: true,
             ..default()
         },
-        transform: Transform {
+        Transform {
             translation: Vec3::new(0.0, 2.0, 0.0),
             rotation: Quat::from_rotation_y(2.2) * Quat::from_rotation_x(-1.2),
             ..default()
         },
-        ..default()
-    });
+    ));
 
     commands.insert_resource(AmbientLight {
         brightness: 0.1,
@@ -261,15 +242,14 @@ pub struct CAD;
 
 fn spawn_cad(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
-        .spawn(SceneBundle {
-            scene: asset_server.load("models/aion_source.gltf#Scene0"),
-            transform: Transform {
+        .spawn((
+            SceneRoot(asset_server.load("models/aion_source.gltf#Scene0")),
+            Transform {
                 scale: Vec3::new(0.6, 0.6, 0.6),
                 rotation: Quat::from_rotation_y(std::f32::consts::PI / 2.0),
                 ..default()
             },
-            ..default()
-        })
+        ))
         .insert(CAD);
 }
 
@@ -308,14 +288,15 @@ pub struct MOTBeam;
 pub struct PushBeam;
 
 fn experiment_controls(
-    mut egui_context: ResMut<EguiContext>,
+    mut egui_context: EguiContexts,
     mut config: ResMut<ExperimentConfiguration>,
     mut camera_query: Query<(&mut Camera, &mut Projection)>,
-    mut windows: ResMut<Windows>,
+    mut window_query: Query<&mut Window>,
 ) {
+    let ctx = egui_context.ctx_mut().clone();
     let rect = egui::SidePanel::right("right")
         .resizable(true)
-        .show(egui_context.ctx_mut(), |ui| {
+        .show(&ctx, |ui| {
             ui.heading("AION Source");
             ui.separator();
             ui.label("A simulation of the cold atom source used to laser cool and capture atoms ejected from a hot oven.");
@@ -349,8 +330,8 @@ fn experiment_controls(
             ui.separator();
             ui.add(egui::Checkbox::new(&mut config.show_cad, "Show CAD?"));
             if ui.add(egui::Button::new("Fullscreen mode")).clicked() {
-                for window in windows.iter_mut() {
-                    window.set_mode(WindowMode::BorderlessFullscreen);
+                for mut window in window_query.iter_mut() {
+                    window.mode = WindowMode::BorderlessFullscreen(MonitorSelection::Current);
                 }
             }
             ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
@@ -410,6 +391,10 @@ fn update_magnetic_fields(
 
 fn update_cad(mut query: Query<&mut Visibility, With<CAD>>, config: Res<ExperimentConfiguration>) {
     for mut visibility in query.iter_mut() {
-        visibility.is_visible = config.show_cad;
+        *visibility = if config.show_cad {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
     }
 }

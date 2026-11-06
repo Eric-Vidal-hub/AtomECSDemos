@@ -24,8 +24,10 @@ use atomecs::laser_cooling::{CoolingLight, LaserCoolingPlugin};
 use atomecs::magnetic::quadrupole::QuadrupoleField3D;
 use atomecs::species::Rubidium87_780D2;
 use atomecs_demos::atoms::add_meshes_to_atoms;
+use atomecs_demos::camera::ortho_camera;
 use atomecs_demos::BevyAtomECSPlugin;
 use bevy::prelude::*;
+use bevy::render::camera::Projection;
 use nalgebra::Vector3;
 use rand_distr::{Distribution, Normal};
 
@@ -48,27 +50,27 @@ impl Default for DopperSimulationConfiguration {
 
 fn main() {
     let mut app = App::new();
-    app.add_plugin(atomecs::integrator::IntegrationPlugin);
-    app.add_plugin(atomecs::initiate::InitiatePlugin);
-    app.add_plugin(atomecs::magnetic::MagneticsPlugin);
-    app.add_plugin(LaserPlugin::<{ BEAM_NUMBER }>);
-    app.add_plugin(LaserCoolingPlugin::<Rubidium87_780D2, { BEAM_NUMBER }>::default());
-    app.add_plugin(BevyAtomECSPlugin);
-    app.add_system(add_meshes_to_atoms::<Rubidium87_780D2>);
-    app.add_system(atomecs::output::console_output::console_output);
+    app.add_plugins(atomecs::integrator::IntegrationPlugin);
+    app.add_plugins(atomecs::initiate::InitiatePlugin);
+    app.add_plugins(atomecs::magnetic::MagneticsPlugin);
+    app.add_plugins(LaserPlugin::<{ BEAM_NUMBER }>);
+    app.add_plugins(LaserCoolingPlugin::<Rubidium87_780D2, { BEAM_NUMBER }>::default());
+    app.add_plugins(BevyAtomECSPlugin);
+    app.add_systems(Update, add_meshes_to_atoms::<Rubidium87_780D2>);
+    app.add_systems(Update, atomecs::output::console_output::console_output);
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
-        window: WindowDescriptor {
+        primary_window: Some(Window {
             fit_canvas_to_parent: true,
             canvas: Some("#bevy".to_string()),
             ..default()
-        },
+        }),
         ..default()
     }));
-    app.add_system(atomecs::bevy_bridge::copy_positions);
-    app.add_startup_system(setup_world);
-    app.add_startup_system(create_atoms);
-    app.add_startup_system(setup_camera);
-    //app.add_startup_system(add_atomecs_watermark);
+    app.add_systems(Update, atomecs::bevy_bridge::copy_positions);
+    app.add_systems(Startup, setup_world);
+    app.add_systems(Startup, create_atoms);
+    app.add_systems(Startup, setup_camera);
+    //app.add_systems(Startup, add_atomecs_watermark);
     app.insert_resource(atomecs::bevy_bridge::Scale { 0: 1e3 });
     app.insert_resource(Timestep { delta: 2.0e-5 });
     app.insert_resource(EmissionForceOption::On(EmissionForceConfiguration {
@@ -171,7 +173,7 @@ pub fn setup_world(mut commands: Commands) {
 fn create_atoms(mut commands: Commands) {
     let vel_dist = Normal::new(0.0, 0.42).unwrap();
     let pos_dist = Normal::new(0.0, 1.2e-4).unwrap();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // Add atoms
     for _ in 0..1000 {
@@ -200,41 +202,21 @@ fn create_atoms(mut commands: Commands) {
 
 fn setup_camera(mut commands: Commands) {
     // set up the camera
-    let mut camera = Camera3dBundle {
-        projection: OrthographicProjection {
-            scale: 0.01,
-            ..default()
-        }
-        .into(),
-        ..default()
-    };
-    camera.transform = Transform::from_xyz(4.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y);
+    commands.spawn((
+        Camera3d::default(),
+        Projection::Orthographic(ortho_camera(0.01)),
+        Transform::from_xyz(4.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
 
-    // camera
-    commands.spawn(camera);
-
-    const HALF_SIZE: f32 = 10.0;
-    commands.spawn(DirectionalLightBundle {
-        directional_light: DirectionalLight {
+    commands.spawn((
+        DirectionalLight {
             illuminance: 30000.0,
-            // Configure the projection to better fit the scene
-            shadow_projection: OrthographicProjection {
-                left: -HALF_SIZE,
-                right: HALF_SIZE,
-                bottom: -HALF_SIZE,
-                top: HALF_SIZE,
-                near: -10.0 * HALF_SIZE,
-                far: 10.0 * HALF_SIZE,
-                ..default()
-            },
-            shadows_enabled: true,
             ..default()
         },
-        transform: Transform {
+        Transform {
             translation: Vec3::new(0.0, 2.0, 0.0),
             rotation: Quat::from_rotation_x(-2.0),
             ..default()
         },
-        ..default()
-    });
+    ));
 }

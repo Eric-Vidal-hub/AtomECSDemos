@@ -1,5 +1,6 @@
 use atomecs::bevy_bridge::Scale;
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 
 use bevy::input::mouse::MouseMotion;
 
@@ -32,23 +33,40 @@ impl Default for DemoCamera {
     }
 }
 
+/// Build an orthographic projection suitable for 3D scenes, with a zoom `scale` applied.
+/// Replaces the bevy 0.9 pattern of `OrthographicProjection { scale, ..default() }`,
+/// which no longer compiles in bevy 0.16 since `OrthographicProjection` has no `Default`.
+pub fn ortho_camera(scale: f32) -> OrthographicProjection {
+    let mut proj = OrthographicProjection::default_3d();
+    proj.scale = scale;
+    proj
+}
+
+/// As `ortho_camera`, but with an explicit `near` plane.
+pub fn ortho_camera_near(scale: f32, near: f32) -> OrthographicProjection {
+    let mut proj = ortho_camera(scale);
+    proj.near = near;
+    proj
+}
+
 pub fn control_camera(
     mut mouse_motion_events: EventReader<MouseMotion>,
-    mouse_button_input: Res<Input<MouseButton>>,
-    wnds: Res<Windows>,
+    mouse_button_input: Res<ButtonInput<MouseButton>>,
+    primary_window: Query<&Window, With<PrimaryWindow>>,
     scale: Res<Scale>,
     mut query: Query<(&mut DemoCamera, &mut Transform, &Camera)>,
 ) {
     let mut delta = Vec2::ZERO;
-    for event in mouse_motion_events.iter() {
+    for event in mouse_motion_events.read() {
         delta += event.delta * 1e-2;
     }
 
+    let window = primary_window.single().unwrap();
     for (mut demo_camera, mut transform, camera) in query.iter_mut() {
         if mouse_button_input.just_pressed(MouseButton::Left) {
             // only do something if mouse is clicked inside viewport
             if let Some(viewport) = &camera.viewport {
-                if let Some(screen_pos) = wnds.get_primary().unwrap().cursor_position() {
+                if let Some(screen_pos) = window.cursor_position() {
                     // for now - only support bar on the right or bottom.
                     if screen_pos.x > 0.95*viewport.physical_size.x as f32 || screen_pos.y > viewport.physical_size.y as f32 {
                         continue;

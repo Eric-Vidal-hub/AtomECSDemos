@@ -15,11 +15,12 @@ use atomecs::shapes::Cuboid;
 use atomecs::sim_region::{SimulationRegionPlugin, SimulationVolume, VolumeType};
 use atomecs::species::Strontium88_461;
 use atomecs_demos::atoms::{add_meshes_to_atoms, EmissiveColorConfig, MaterialColorConfig};
-use atomecs_demos::camera::{control_camera, DemoCamera};
+use atomecs_demos::camera::{control_camera, DemoCamera, ortho_camera_near};
 use atomecs_demos::lasers::add_meshes_to_lasers;
 use atomecs_demos::BevyAtomECSPlugin;
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContext, EguiPlugin};
+use bevy::render::camera::Projection;
+use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use nalgebra::Vector3;
 use rand_distr::{Distribution, Normal};
 extern crate serde;
@@ -29,25 +30,25 @@ const BEAM_NUMBER: usize = 22;
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
-    app.add_plugin(EguiPlugin);
-    app.add_plugin(atomecs::integrator::IntegrationPlugin);
-    app.add_plugin(atomecs::initiate::InitiatePlugin);
-    app.add_plugin(atomecs::magnetic::MagneticsPlugin);
-    app.add_plugin(LaserPlugin::<{ BEAM_NUMBER }>);
-    app.add_plugin(LaserCoolingPlugin::<Strontium88_461, { BEAM_NUMBER }>::default());
-    app.add_plugin(SimulationRegionPlugin);
-    app.add_plugin(BevyAtomECSPlugin);
-    app.add_system(atomecs::output::console_output::console_output);
-    app.add_system(atomecs::bevy_bridge::copy_positions);
-    app.add_startup_system(setup_world);
-    app.add_system(add_meshes_to_atoms::<Strontium88_461>);
-    //app.add_system(atomecs_demos::atoms::update_emissive_color::<Strontium88_461>);
-    app.add_system(add_meshes_to_lasers::<Strontium88_461>);
-    app.add_system(create_atoms);
-    app.add_system(control_camera);
-    app.add_startup_system(setup_camera);
-    //app.add_startup_system(add_atomecs_watermark);
-    app.add_startup_system(spawn_cad);
+    app.add_plugins(EguiPlugin { enable_multipass_for_primary_context: false });
+    app.add_plugins(atomecs::integrator::IntegrationPlugin);
+    app.add_plugins(atomecs::initiate::InitiatePlugin);
+    app.add_plugins(atomecs::magnetic::MagneticsPlugin);
+    app.add_plugins(LaserPlugin::<{ BEAM_NUMBER }>);
+    app.add_plugins(LaserCoolingPlugin::<Strontium88_461, { BEAM_NUMBER }>::default());
+    app.add_plugins(SimulationRegionPlugin);
+    app.add_plugins(BevyAtomECSPlugin);
+    app.add_systems(Update, atomecs::output::console_output::console_output);
+    app.add_systems(Update, atomecs::bevy_bridge::copy_positions);
+    app.add_systems(Startup, setup_world);
+    app.add_systems(Update, add_meshes_to_atoms::<Strontium88_461>);
+    //app.add_systems(Update, atomecs_demos::atoms::update_emissive_color::<Strontium88_461>);
+    app.add_systems(Update, add_meshes_to_lasers::<Strontium88_461>);
+    app.add_systems(Update, create_atoms);
+    app.add_systems(Update, control_camera);
+    app.add_systems(Startup, setup_camera);
+    //app.add_systems(Startup, add_atomecs_watermark);
+    app.add_systems(Startup, spawn_cad);
     app.insert_resource(atomecs::bevy_bridge::Scale { 0: 3e1 });
     app.insert_resource(Timestep { delta: 2.0e-5 });
     app.insert_resource(EmissionForceOption::On(EmissionForceConfiguration {
@@ -57,9 +58,9 @@ fn main() {
     app.insert_resource(MaterialColorConfig { factor: 1.0 });
     app.insert_resource(ScatteringFluctuationsOption::On);
     app.init_resource::<ExperimentConfiguration>();
-    app.add_system(experiment_controls);
-    app.add_system(update_transverse_cooling);
-    app.add_system(update_zeeman_slower);
+    app.add_systems(Update, experiment_controls);
+    app.add_systems(Update, update_transverse_cooling);
+    app.add_systems(Update, update_zeeman_slower);
     app.run();
 }
 
@@ -226,7 +227,7 @@ pub fn setup_world(mut commands: Commands) {
 
 fn create_atoms(mut commands: Commands) {
     let dist = Normal::new(0.0, 1.0).unwrap();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let oven_position = -1.9; //m
                               // Add atoms
@@ -258,47 +259,20 @@ fn setup_camera(mut commands: Commands, scale: Res<Scale>) {
     // set up the camera
     let look_at_target = Vec3::new(-1.0, 0.0, 0.0);
     let demo_cam = DemoCamera::new(8.0, look_at_target);
-    let camera = Camera3dBundle {
-        projection: OrthographicProjection {
-            scale: 0.05,
-            near: -30.0,
-            ..default()
-        }
-        .into(),
-        transform: demo_cam.get_transform(scale.0 as f32),
-        ..default()
-    };
-    //camera.orthographic_projection.scale = 23.0;
-    //camera.orthographic_projection.near = -30.0;
+    commands.spawn((
+        Camera3d::default(),
+        Projection::Orthographic(ortho_camera_near(0.05, -30.0)),
+        demo_cam.get_transform(scale.0 as f32),
+        demo_cam,
+    ));
 
-    // camera
-    commands.spawn(camera).insert(demo_cam);
-
-    const HALF_SIZE: f32 = 100.0;
-    commands.spawn(DirectionalLightBundle {
-        directional_light: DirectionalLight {
+    commands.spawn((
+        DirectionalLight {
             illuminance: 30000.0,
-            // Configure the projection to better fit the scene
-            shadow_projection: OrthographicProjection {
-                left: -HALF_SIZE,
-                right: HALF_SIZE,
-                bottom: -HALF_SIZE,
-                top: HALF_SIZE,
-                near: -20.0 * HALF_SIZE,
-                far: 20.0 * HALF_SIZE,
-                ..default()
-            },
-            shadows_enabled: true,
             ..default()
         },
-        // transform: Transform {
-        //     translation: Vec3::new(0.0, 2.0, 0.0),
-        //     rotation: Quat::from_rotation_y(4.2) * Quat::from_rotation_x(-1.2),
-        //     ..default()
-        // },
-        transform: Transform::from_xyz(0.0, 1.0, 1.0).looking_at(Vec3::default(), Vec3::Y),
-        ..default()
-    });
+        Transform::from_xyz(0.0, 1.0, 1.0).looking_at(Vec3::default(), Vec3::Y),
+    ));
 
     commands.insert_resource(AmbientLight {
         brightness: 0.3,
@@ -311,19 +285,18 @@ fn setup_camera(mut commands: Commands, scale: Res<Scale>) {
 struct EntityInMyScene;
 
 fn spawn_cad(mut commands: Commands, asset_server: Res<AssetServer>) {
-    commands.spawn(SceneBundle {
-        scene: asset_server.load("models/schreck.gltf#Scene0"),
-        transform: Transform {
+    commands.spawn((
+        SceneRoot(asset_server.load("models/schreck.gltf#Scene0")),
+        Transform {
             scale: Vec3::new(0.2735, 0.2735, 0.2735),
             //rotation: Quat::from_rotation_y(0.0),
             ..default()
         },
-        ..default()
-    });
+    ));
 }
 
 //yeah its messy, but so is loading raw json via bevy asset lib right now.
-static SLOWER_FIELD: &str = "{\"extent_spatial\":[1.4,0.1,0.1],\"extent_cells\":[100,1,1],\"position\":[-0.6,0,0],\"grid\":[[0,0,0],[-0.00010356086113661874,0,0],[-0.00012131415161718194,0,0],[-5.3259871441689581E-5,0,0],[8.8390279697289322E-5,0,0],[0.00028248096720701575,0,0],[0.00059618220775245544,0,0],[0.0010902402249203598,0,0],[0.0013788955775487766,0,0],[0.0018677685950413221,0,0],[0.003386332460406539,0,0],[0.0066049382716049368,0,0],[0.011197929710326406,0,0],[0.016485182402537775,0,0],[0.021948657063441273,0,0],[0.028529927372902587,0,0],[0.035079994929398055,0,0],[0.03978910006090907,0,0],[0.041496619083395941,0,0],[0.041206110693714007,0,0],[0.040275945868232368,0,0],[0.039806049475470971,0,0],[0.0392482853223594,0,0],[0.038576111075039762,0,0],[0.037939839162979654,0,0],[0.037388889404193971,0,0],[0.036840539874822095,0,0],[0.036219383921863253,0,0],[0.0354419761331301,0,0],[0.034516414012587877,0,0],[0.033588251662631838,0,0],[0.03280424590770474,0,0],[0.0321792344421668,0,0],[0.031629629629629633,0,0],[0.031080024817092468,0,0],[0.030494949494949495,0,0],[0.029909090909090909,0,0],[0.029323232323232327,0,0],[0.028737373737373739,0,0],[0.028151515151515153,0,0],[0.027565656565656568,0,0],[0.026979848479695433,0,0],[0.026425939839162978,0,0],[0.025879831886871985,0,0],[0.025266117969821675,0,0],[0.024515401953418486,0,0],[0.023641246667264425,0,0],[0.022717687022247784,0,0],[0.02181818181818182,0,0],[0.020939393939393938,0,0],[0.020060606060606063,0,0],[0.019181818181818178,0,0],[0.018303030303030304,0,0],[0.017424242424242422,0,0],[0.016545454545454547,0,0],[0.015666666666666662,0,0],[0.014787878787878789,0,0],[0.013909090909090916,0,0],[0.013030303030303034,0,0],[0.012208883035023233,0,0],[0.011413362272866405,0,0],[0.010493030498846236,0,0],[0.0093000425641992825,0,0],[0.0078343350864012087,0,0],[0.0062750193497056062,0,0],[0.0048057475066963975,0,0],[0.0033148148148148156,0,0],[0.0018667859082612719,0,0],[0.00072558407253846236,0,0],[0.00015717783899602084,0,0],[9.4712557675520967E-5,0,0],[0.00013235610878708495,0,0],[-8.039068369646871E-5,0,0],[-0.00011370051911833379,0,0],[-0.00041223375474982267,0,0],[-0.0017677602470990736,0,0],[-0.0047691381728724976,0,0],[-0.0089821673525377153,0,0],[-0.013652836909035225,0,0],[-0.018536119278696511,0,0],[-0.025158216178724331,0,0],[-0.030755822689707009,0,0],[-0.031856213394015648,0,0],[-0.025674242681894964,0,0],[-0.015363107660628206,0,0],[-0.0060504607342684695,0,0],[-0.0016689288559505863,0,0],[-0.00027436903469961536,0,0],[-0.00015912208504801175,0,0],[0.00012212318058660361,0,0],[0.00029451540195341865,0,0],[0.00015488009366185232,0,0],[4.8438677150042879E-6,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]}";
+static SLOWER_FIELD: &str = r#"{"extent_spatial":[1.4,0.1,0.1],"extent_cells":[100,1,1],"position":[-0.6,0,0],"grid":[[0,0,0],[-0.00010356086113661874,0,0],[-0.00012131415161718194,0,0],[-5.3259871441689581E-5,0,0],[8.8390279697289322E-5,0,0],[0.00028248096720701575,0,0],[0.00059618220775245544,0,0],[0.0010902402249203598,0,0],[0.0013788955775487766,0,0],[0.0018677685950413221,0,0],[0.003386332460406539,0,0],[0.0066049382716049368,0,0],[0.011197929710326406,0,0],[0.016485182402537775,0,0],[0.021948657063441273,0,0],[0.028529927372902587,0,0],[0.035079994929398055,0,0],[0.03978910006090907,0,0],[0.041496619083395941,0,0],[0.041206110693714007,0,0],[0.040275945868232368,0,0],[0.039806049475470971,0,0],[0.0392482853223594,0,0],[0.038576111075039762,0,0],[0.037939839162979654,0,0],[0.037388889404193971,0,0],[0.036840539874822095,0,0],[0.036219383921863253,0,0],[0.0354419761331301,0,0],[0.034516414012587877,0,0],[0.033588251662631838,0,0],[0.03280424590770474,0,0],[0.0321792344421668,0,0],[0.031629629629629633,0,0],[0.031080024817092468,0,0],[0.030494949494949495,0,0],[0.029909090909090909,0,0],[0.029323232323232327,0,0],[0.028737373737373739,0,0],[0.028151515151515153,0,0],[0.027565656565656568,0,0],[0.026979848479695433,0,0],[0.026425939839162978,0,0],[0.025879831886871985,0,0],[0.025266117969821675,0,0],[0.024515401953418486,0,0],[0.023641246667264425,0,0],[0.022717687022247784,0,0],[0.02181818181818182,0,0],[0.020939393939393938,0,0],[0.020060606060606063,0,0],[0.019181818181818178,0,0],[0.018303030303030304,0,0],[0.017424242424242422,0,0],[0.016545454545454547,0,0],[0.015666666666666662,0,0],[0.014787878787878789,0,0],[0.013909090909090916,0,0],[0.013030303030303034,0,0],[0.012208883035023233,0,0],[0.011413362272866405,0,0],[0.010493030498846236,0,0],[0.0093000425641992825,0,0],[0.0078343350864012087,0,0],[0.0062750193497056062,0,0],[0.0048057475066963975,0,0],[0.0033148148148148156,0,0],[0.0018667859082612719,0,0],[0.00072558407253846236,0,0],[0.00015717783899602084,0,0],[9.4712557675520967E-5,0,0],[0.00013235610878708495,0,0],[-8.039068369646871E-5,0,0],[-0.00011370051911833379,0,0],[-0.00041223375474982267,0,0],[-0.0017677602470990736,0,0],[-0.0047691381728724976,0,0],[-0.0089821673525377153,0,0],[-0.013652836909035225,0,0],[-0.018536119278696511,0,0],[-0.025158216178724331,0,0],[-0.030755822689707009,0,0],[-0.031856213394015648,0,0],[-0.025674242681894964,0,0],[-0.015363107660628206,0,0],[-0.0060504607342684695,0,0],[-0.0016689288559505863,0,0],[-0.00027436903469961536,0,0],[-0.00015912208504801175,0,0],[0.00012212318058660361,0,0],[0.00029451540195341865,0,0],[0.00015488009366185232,0,0],[4.8438677150042879E-6,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]}"#;
 
 // User interface stuff
 
@@ -348,12 +321,13 @@ impl Default for ExperimentConfiguration {
 }
 
 fn experiment_controls(
-    mut egui_context: ResMut<EguiContext>,
+    mut egui_context: EguiContexts,
     mut config: ResMut<ExperimentConfiguration>,
 ) {
+    let ctx = egui_context.ctx_mut().clone();
     egui::TopBottomPanel::bottom("bottom")
         .resizable(true)
-        .show(egui_context.ctx_mut(), |ui| {
+        .show(&ctx, |ui| {
             ui.heading("Control Panel");
             ui.add(egui::Hyperlink::from_label_and_url(
                 "powered by AtomECS",

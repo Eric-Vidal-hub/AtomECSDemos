@@ -12,14 +12,18 @@ keywords = ["physics", "cold-atoms", "amop", "laser-cooling", "ecs"]
 resolver = "2"
 
 [dependencies]
-bevy = { version = "0.9", default-features = true, features = []}
+bevy = "0.16"
 atomecs = { git = "https://github.com/TeamAtomECS/AtomECS", branch = "bevy" }
-nalgebra = { version = "0.30.1", features = ["serde-serialize"] }
-rand = "0.8.3"
-rand_distr = "0.4.0"
+nalgebra = { version = "0.33", features = ["serde-serialize"] }
+rand = "0.9"
+rand_distr = "0.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-bevy_egui = "0.19.0"
+bevy_egui = "0.34"
+
+# getrandom 0.3 needs an explicit opt-in for wasm32-unknown-unknown targets
+[target.wasm32-unknown-unknown.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [profile.release]
 opt-level = 3

@@ -14,9 +14,10 @@ use atomecs::shapes::Cuboid;
 use atomecs::sim_region::{SimulationRegionPlugin, SimulationVolume, VolumeType};
 use atomecs::species::Strontium88_461;
 use atomecs_demos::atoms::{add_meshes_to_atoms, EmissiveColorConfig};
-use atomecs_demos::camera::{control_camera, DemoCamera};
+use atomecs_demos::camera::{control_camera, DemoCamera, ortho_camera};
 use atomecs_demos::{add_atomecs_watermark, BevyAtomECSPlugin};
 use bevy::prelude::*;
+use bevy::render::camera::Projection;
 use nalgebra::Vector3;
 use rand_distr::{Distribution, Normal};
 
@@ -24,31 +25,32 @@ const BEAM_NUMBER: usize = 6;
 
 fn main() {
     let mut app = App::new();
-    app.add_plugin(atomecs::integrator::IntegrationPlugin);
-    app.add_plugin(atomecs::initiate::InitiatePlugin);
-    app.add_plugin(atomecs::magnetic::MagneticsPlugin);
-    app.add_plugin(LaserPlugin::<{ BEAM_NUMBER }>);
-    app.add_plugin(LaserCoolingPlugin::<Strontium88_461, { BEAM_NUMBER }>::default());
-    app.add_plugin(SimulationRegionPlugin);
-    app.add_plugin(BevyAtomECSPlugin);
-    app.add_system(atomecs::output::console_output::console_output);
+    app.add_plugins(atomecs::integrator::IntegrationPlugin);
+    app.add_plugins(atomecs::initiate::InitiatePlugin);
+    app.add_plugins(atomecs::magnetic::MagneticsPlugin);
+    app.add_plugins(LaserPlugin::<{ BEAM_NUMBER }>);
+    app.add_plugins(LaserCoolingPlugin::<Strontium88_461, { BEAM_NUMBER }>::default());
+    app.add_plugins(SimulationRegionPlugin);
+    app.add_plugins(BevyAtomECSPlugin);
+    app.add_systems(Update, atomecs::output::console_output::console_output);
     app.add_plugins(DefaultPlugins);
-    app.add_system(atomecs::bevy_bridge::copy_positions);
-    app.add_system(add_meshes_to_atoms::<Strontium88_461>);
-    app.add_startup_system(setup_world);
-    app.add_system(create_atoms);
-    app.add_startup_system(setup_camera);
-    app.add_system(control_camera);
-    app.add_startup_system(add_atomecs_watermark);
+    app.add_systems(Update, atomecs::bevy_bridge::copy_positions);
+    app.add_systems(Update, add_meshes_to_atoms::<Strontium88_461>);
+    app.add_systems(Startup, setup_world);
+    app.add_systems(Update, create_atoms);
+    app.add_systems(Startup, setup_camera);
+    app.add_systems(Update, control_camera);
+    app.add_systems(Startup, add_atomecs_watermark);
     app.insert_resource(atomecs::bevy_bridge::Scale { 0: 7e1 });
     app.insert_resource(Timestep { delta: 2.0e-5 });
     app.insert_resource(EmissionForceOption::On(EmissionForceConfiguration {
         explicit_threshold: 5,
     }));
     app.insert_resource(EmissiveColorConfig { factor: 8.0 });
-    app.add_system(
+    app.add_systems(
+        Update,
         atomecs_demos::atoms::update_emissive_color::<Strontium88_461>
-            .after(atomecs::laser_cooling::LaserCoolingSystems::CalculateActualPhotonsScattered),
+            .after(atomecs::laser_cooling::LaserCoolingSystemsSet::Set),
     );
     app.insert_resource(ScatteringFluctuationsOption::On);
     app.run();
@@ -151,7 +153,7 @@ pub fn setup_world(mut commands: Commands) {
 
 fn create_atoms(mut commands: Commands) {
     let vel_dist = Normal::new(0.0, 2.0).unwrap();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // Add atoms
     commands
@@ -174,39 +176,23 @@ fn create_atoms(mut commands: Commands) {
 
 fn setup_camera(mut commands: Commands) {
     // set up the camera
-    let mut camera = Camera3dBundle {
-        projection: OrthographicProjection {
-            scale: 0.01,
-            ..default()
-        }
-        .into(),
-        ..default()
-    };
-    camera.transform = Transform::from_xyz(4.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y);
-    commands.spawn(camera).insert(DemoCamera::default());
+    commands
+        .spawn((
+            Camera3d::default(),
+            Projection::Orthographic(ortho_camera(0.01)),
+            Transform::from_xyz(4.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+        ))
+        .insert(DemoCamera::default());
 
-    const HALF_SIZE: f32 = 10.0;
-    commands.spawn(DirectionalLightBundle {
-        directional_light: DirectionalLight {
+    commands.spawn((
+        DirectionalLight {
             illuminance: 30000.0,
-            // Configure the projection to better fit the scene
-            shadow_projection: OrthographicProjection {
-                left: -HALF_SIZE,
-                right: HALF_SIZE,
-                bottom: -HALF_SIZE,
-                top: HALF_SIZE,
-                near: -10.0 * HALF_SIZE,
-                far: 10.0 * HALF_SIZE,
-                ..default()
-            },
-            shadows_enabled: true,
             ..default()
         },
-        transform: Transform {
+        Transform {
             translation: Vec3::new(0.0, 2.0, 0.0),
             rotation: Quat::from_rotation_x(-2.0),
             ..default()
         },
-        ..default()
-    });
+    ));
 }
