@@ -5,3 +5,9 @@
 [target.wasm32-unknown-unknown]
 runner = "wasm-server-runner"
 rustflags = ['--cfg', 'getrandom_backend="wasm_js"']
+
+[env]
+# wasm-server-runner's default page has no <canvas id="bevy">, which bevy 0.16
+# needs (the demos set canvas: Some("#bevy")). Point it at a patched copy of
+# its default index.html that adds the canvas. Relative to the repo root.
+WASM_SERVER_RUNNER_CUSTOM_INDEX_HTML = "web/index.html"

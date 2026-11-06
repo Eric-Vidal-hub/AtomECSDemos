@@ -63,6 +63,37 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 rustflags = ['--cfg', 'getrandom_backend="wasm_js"']
 ```
 
+## Local wasm testing: the `#bevy` canvas
+
+The demos create their window with `canvas: Some("#bevy")`, matching the HTML
+pages in `pages/` that are deployed to GitHub Pages (each contains
+`<canvas id="bevy"></canvas>`). `wasm-server-runner`'s default page has no such
+element, so a local browser run panics with `Cannot find element: #bevy`
+followed by `Unable to find a GPU!` (the second error is a cascade).
+
+Fix shipped with this port:
+
+- `web/index.html` is a copy of wasm-server-runner's default page with the
+  `<canvas id="bevy"></canvas>` element added (its `{{ NO_MODULE }}` /
+  `// {{ MODULE }}` placeholders are kept so the runner still injects its
+  loader and console forwarding).
+- `.cargo/config.toml` sets the env var the runner reads:
+
+```toml
+[env]
+WASM_SERVER_RUNNER_CUSTOM_INDEX_HTML = "web/index.html"
+```
+
+Run from the repo root so the relative path resolves:
+
+```
+cargo run --target wasm32-unknown-unknown --release --example 3d_mot
+```
+
+If the env var is not picked up (e.g. older cargo `[env]` handling), set it
+manually first: `$env:WASM_SERVER_RUNNER_CUSTOM_INDEX_HTML="web/index.html"`
+(PowerShell) or `export WASM_SERVER_RUNNER_CUSTOM_INDEX_HTML=web/index.html`.
+
 ## Required one-time step
 
 The old `Cargo.lock` pins bevy 0.9 and must be regenerated after checking out
